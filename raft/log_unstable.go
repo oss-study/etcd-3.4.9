@@ -20,13 +20,21 @@ import pb "go.etcd.io/etcd/raft/raftpb"
 // Note that unstable.offset may be less than the highest log
 // position in storage; this means that the next write to storage
 // might need to truncate the log before persisting unstable.entries.
+// 日志缓冲区
+// 如果是 Leader 节点，维护着客户端发送的 Entry 记录；
+// 如果是 Follower 节点，维护着 Leader 发送的 Entry 记录；
+// 在记录被持久化后，上层模块会调用 Advance() 方法通知 raft 模块将 unstable 中对应的 Entry 记录删除。
 type unstable struct {
 	// the incoming unstable snapshot, if any.
+	// 快照数据，该快照数据也是未写入 Storage 中的。
 	snapshot *pb.Snapshot
 	// all entries that have not yet been written to storage.
+	// 未写入 Storage 中的 Entry 记录。
 	entries []pb.Entry
-	offset  uint64
+	// entries 中第一条 Entry 记录的索引值。
+	offset uint64
 
+	// 运行时日志
 	logger Logger
 }
 
@@ -72,6 +80,7 @@ func (u *unstable) maybeTerm(i uint64) (uint64, bool) {
 	return u.entries[i-u.offset].Term, true
 }
 
+// Entry 记录被写入 Storage 后，会调用 unstable.stableTo() 方法清除 entries 中对应的 Entry 记录
 func (u *unstable) stableTo(i, t uint64) {
 	gt, ok := u.maybeTerm(i)
 	if !ok {
@@ -83,6 +92,7 @@ func (u *unstable) stableTo(i, t uint64) {
 	if gt == t && i >= u.offset {
 		u.entries = u.entries[i+1-u.offset:]
 		u.offset = i + 1
+		// 随着多次追加日志和截断日志的操作， entires 数组会越来越大
 		u.shrinkEntriesArray()
 	}
 }
@@ -91,6 +101,7 @@ func (u *unstable) stableTo(i, t uint64) {
 // if most of it isn't being used. This avoids holding references to a bunch of
 // potentially large entries that aren't needed anymore. Simply clearing the
 // entries wouldn't be safe because clients might still be using them.
+// shrinkEntriesArray() 方法会在底层数组长度超过实际占用的两倍时，对底层数组进行缩减
 func (u *unstable) shrinkEntriesArray() {
 	// We replace the array if we're using less than half of the space in
 	// it. This number is fairly arbitrary, chosen as an attempt to balance
@@ -106,6 +117,8 @@ func (u *unstable) shrinkEntriesArray() {
 	}
 }
 
+// 当 unstable.snapshot 指向的快照被写入 Storage 之后，
+// 调用 unstable.stableSnapTo() 方法将 snapshot 清空
 func (u *unstable) stableSnapTo(i uint64) {
 	if u.snapshot != nil && u.snapshot.Metadata.Index == i {
 		u.snapshot = nil
@@ -118,6 +131,7 @@ func (u *unstable) restore(s pb.Snapshot) {
 	u.snapshot = &s
 }
 
+// 向 unstable.entries 追加 Entry 记录
 func (u *unstable) truncateAndAppend(ents []pb.Entry) {
 	after := ents[0].Index
 	switch {
@@ -140,6 +154,7 @@ func (u *unstable) truncateAndAppend(ents []pb.Entry) {
 	}
 }
 
+// 返回[lo, hi] 范围数据的切片
 func (u *unstable) slice(lo uint64, hi uint64) []pb.Entry {
 	u.mustCheckOutOfBounds(lo, hi)
 	return u.entries[lo-u.offset : hi-u.offset]
