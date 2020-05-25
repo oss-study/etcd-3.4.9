@@ -31,16 +31,19 @@ type raftLog struct {
 
 	// committed is the highest log position that is known to be in
 	// stable storage on a quorum of nodes.
+	// 已提交的 Entry 记录的最大索引值
 	committed uint64
 	// applied is the highest log position that the application has
 	// been instructed to apply to its state machine.
 	// Invariant: applied <= committed
+	// 已应用的 Entry 记录的最大索引值，其中 applied <= committed
 	applied uint64
 
 	logger Logger
 
 	// maxNextEntsSize is the maximum number aggregate byte size of the messages
 	// returned from calls to nextEnts.
+	// nextEnts() 方法返回的最大字节数
 	maxNextEntsSize uint64
 }
 
@@ -88,6 +91,7 @@ func (l *raftLog) String() string {
 func (l *raftLog) maybeAppend(index, logTerm, committed uint64, ents ...pb.Entry) (lastnewi uint64, ok bool) {
 	if l.matchTerm(index, logTerm) {
 		lastnewi = index + uint64(len(ents))
+		// 检查新增 Entry 与 原有 Entry 是否有冲突
 		ci := l.findConflict(ents)
 		switch {
 		case ci == 0:
@@ -148,6 +152,8 @@ func (l *raftLog) unstableEntries() []pb.Entry {
 // nextEnts returns all the available entries for execution.
 // If applied is smaller than the index of snapshot, it returns all committed
 // entries after the index of snapshot.
+// 返回己提交但未应用的 Entry 记录
+// 在执行 nextEnts() 方法之前需要执行 hasNextEnts() 进行检查
 func (l *raftLog) nextEnts() (ents []pb.Entry) {
 	off := max(l.applied+1, l.firstIndex())
 	if l.committed+1 > off {
@@ -250,6 +256,7 @@ func (l *raftLog) term(i uint64) (uint64, error) {
 	panic(err) // TODO(bdarnell)
 }
 
+// 获取指定的 Entry 记录
 func (l *raftLog) entries(i, maxsize uint64) ([]pb.Entry, error) {
 	if i > l.lastIndex() {
 		return nil, nil
@@ -313,6 +320,7 @@ func (l *raftLog) slice(lo, hi, maxSize uint64) ([]pb.Entry, error) {
 	}
 	var ents []pb.Entry
 	if lo < l.unstable.offset {
+		// 从 Storage 中获取前半部分记录
 		storedEnts, err := l.storage.Entries(lo, min(hi, l.unstable.offset), maxSize)
 		if err == ErrCompacted {
 			return nil, err
@@ -330,6 +338,7 @@ func (l *raftLog) slice(lo, hi, maxSize uint64) ([]pb.Entry, error) {
 		ents = storedEnts
 	}
 	if hi > l.unstable.offset {
+		// 从 unstable 中获取后半部分记录
 		unstable := l.unstable.slice(max(lo, l.unstable.offset), hi)
 		if len(ents) > 0 {
 			combined := make([]pb.Entry, len(ents)+len(unstable))

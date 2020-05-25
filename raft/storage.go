@@ -84,6 +84,7 @@ type Storage interface {
 // MemoryStorage implements the Storage interface backed by an
 // in-memory array.
 // MemoryStorage 在内存中维护状态信息、快照数据及所有的 entry 记录
+// 需要注意的是，MemoryStorage.ents[0] 是一条假数据
 type MemoryStorage struct {
 	// Protects access to all fields. Most methods of MemoryStorage are
 	// run on the raft goroutine, but Append() is run on an application
