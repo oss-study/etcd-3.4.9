@@ -171,6 +171,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 			case <-r.ticker.C:
 				r.tick()
 			case rd := <-r.Ready():
+				// 处理已完成 readIndex 的读请求
 				if rd.SoftState != nil {
 					newLeader := rd.SoftState.Lead != raft.None && rh.getLead() != rd.SoftState.Lead
 					if newLeader {
@@ -195,6 +196,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 				}
 
 				if len(rd.ReadStates) != 0 {
+					// 每次只将最后一个 readStateC 发送给 r.readStateC
 					select {
 					case r.readStateC <- rd.ReadStates[len(rd.ReadStates)-1]:
 					case <-time.After(internalTimeout):

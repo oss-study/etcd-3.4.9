@@ -2637,6 +2637,7 @@ func (s *EtcdServer) restoreAlarms() error {
 
 // goAttach creates a goroutine on a given function and tracks it using
 // the etcdserver waitgroup.
+// 创建对应服务器的协程
 func (s *EtcdServer) goAttach(f func()) {
 	s.wgMu.RLock() // this blocks with ongoing close(s.stopping)
 	defer s.wgMu.RUnlock()

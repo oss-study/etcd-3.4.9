@@ -86,6 +86,7 @@ type Authenticator interface {
 	RoleList(ctx context.Context, r *pb.AuthRoleListRequest) (*pb.AuthRoleListResponse, error)
 }
 
+// 处理客户端的读请求
 func (s *EtcdServer) Range(ctx context.Context, r *pb.RangeRequest) (*pb.RangeResponse, error) {
 	trace := traceutil.New("range",
 		s.getLogger(),
@@ -107,6 +108,7 @@ func (s *EtcdServer) Range(ctx context.Context, r *pb.RangeRequest) (*pb.RangeRe
 		trace.LogIfLong(traceThreshold)
 	}(time.Now())
 
+	// 如果需要线性一致性读，执行 linearizableReadNotify()
 	if !r.Serializable {
 		err = s.linearizableReadNotify(ctx)
 		trace.Step("agreement among raft nodes before linearized reading")
@@ -118,6 +120,7 @@ func (s *EtcdServer) Range(ctx context.Context, r *pb.RangeRequest) (*pb.RangeRe
 		return s.authStore.IsRangePermitted(ai, r.Key, r.RangeEnd)
 	}
 
+	// 执行到这里说明 applyIndex >= readIndex
 	get := func() { resp, err = s.applyV3Base.Range(ctx, nil, r) }
 	if serr := s.doSerialize(ctx, chk, get); serr != nil {
 		err = serr
@@ -668,6 +671,7 @@ func (s *EtcdServer) processInternalRaftRequestOnce(ctx context.Context, r pb.In
 // Watchable returns a watchable interface attached to the etcdserver.
 func (s *EtcdServer) Watchable() mvcc.WatchableKV { return s.KV() }
 
+// 处理线性一致性只读请求的 Loop
 func (s *EtcdServer) linearizableReadLoop() {
 	var rs raft.ReadState
 
@@ -679,20 +683,25 @@ func (s *EtcdServer) linearizableReadLoop() {
 		select {
 		case <-leaderChangedNotifier:
 			continue
+		// 新的读请求到来时会从 readwaitc 接收到信号
 		case <-s.readwaitc:
 		case <-s.stopping:
 			return
 		}
 
+		// 创建一个新的 notifier 对象让其下一次读请求使用
 		nextnr := newNotifier()
 
+		// 将当前的通知通道换成 nextnr，这个过程要加读写锁
 		s.readMu.Lock()
 		nr := s.readNotifier
 		s.readNotifier = nextnr
 		s.readMu.Unlock()
 
 		lg := s.getLogger()
+		// 调用 raft 模块获取当前读请求的 readIndex
 		cctx, cancel := context.WithTimeout(context.Background(), s.Cfg.ReqTimeout())
+		// 处理 raft 模块发出 readIndex 请求
 		if err := s.r.ReadIndex(cctx, ctxToSend); err != nil {
 			cancel()
 			if err == raft.ErrStopped {
@@ -713,8 +722,11 @@ func (s *EtcdServer) linearizableReadLoop() {
 			timeout bool
 			done    bool
 		)
+		// 阻塞等待 readIndex 请求完成
+		// 请求完成说明当前读请求已经获取到对应准确的 readIndex
 		for !timeout && !done {
 			select {
+			// readIndex 请求完成
 			case rs = <-s.r.readStateC:
 				done = bytes.Equal(rs.RequestCtx, ctxToSend)
 				if !done {
@@ -757,6 +769,7 @@ func (s *EtcdServer) linearizableReadLoop() {
 			continue
 		}
 
+		// 此处就是等待 applyIndex >= readIndex
 		if ai := s.getAppliedIndex(); ai < rs.Index {
 			select {
 			case <-s.applyWait.Wait(rs.Index):
@@ -765,16 +778,19 @@ func (s *EtcdServer) linearizableReadLoop() {
 			}
 		}
 		// unblock all l-reads requested at indices before rs.Index
+		// 发出可以进行读取状态机的信号
 		nr.notify(nil)
 	}
 }
 
 func (s *EtcdServer) linearizableReadNotify(ctx context.Context) error {
+	// 当可以安全地执行读请求时，将从 readNotifier channel 得到信号
 	s.readMu.RLock()
 	nc := s.readNotifier
 	s.readMu.RUnlock()
 
 	// signal linearizable loop for current notify if it hasn't been already
+	// 等待读请求处理协程可以处理此次读请求
 	select {
 	case s.readwaitc <- struct{}{}:
 	default:
@@ -782,6 +798,7 @@ func (s *EtcdServer) linearizableReadNotify(ctx context.Context) error {
 
 	// wait for read state notification
 	select {
+	// 等待 applyIndex >= readIndex
 	case <-nc.c:
 		return nc.err
 	case <-ctx.Done():

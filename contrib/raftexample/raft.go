@@ -455,6 +455,7 @@ func (rc *raftNode) serveChannels() {
 }
 
 func (rc *raftNode) serveRaft() {
+	// 获取当前节点的 URI 地址
 	url, err := url.Parse(rc.peers[rc.id-1])
 	if err != nil {
 		log.Fatalf("raftexample: Failed parsing URL (%v)", err)

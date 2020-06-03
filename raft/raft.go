@@ -101,6 +101,7 @@ type CampaignType string
 // StateType represents the role of a node in a cluster.
 type StateType uint64
 
+// 集群中节点的身份，还有一个 Learner
 var stmap = [...]string{
 	"StateFollower",
 	"StateCandidate",
@@ -134,10 +135,12 @@ type Config struct {
 	// candidate and start an election. ElectionTick must be greater than
 	// HeartbeatTick. We suggest ElectionTick = 10 * HeartbeatTick to avoid
 	// unnecessary leader switching.
+	// 用于初始化 raft.electionTimeout
 	ElectionTick int
 	// HeartbeatTick is the number of Node.Tick invocations that must pass between
 	// heartbeats. That is, a leader sends heartbeat messages to maintain its
 	// leadership every HeartbeatTick ticks.
+	// 用于初始化 raft.heartbeatTimeout
 	HeartbeatTick int
 
 	// Storage is the storage for raft. raft generates entries and states to be
@@ -149,6 +152,7 @@ type Config struct {
 	// raft. raft will not return entries to the application smaller or equal to
 	// Applied. If Applied is unset when restarting, raft might return previous
 	// applied entries. This is a very application dependent configuration.
+	// 己应用的最后一条 Entry 记录的索引值
 	Applied uint64
 
 	// MaxSizePerMsg limits the max byte size of each append message. Smaller
@@ -156,6 +160,7 @@ type Config struct {
 	// during normal operation). On the other side, it might affect the
 	// throughput during normal replication. Note: math.MaxUint64 for unlimited,
 	// 0 for at most one entry per message.
+	// 用于初始化 raft.maxMsgSize
 	MaxSizePerMsg uint64
 	// MaxCommittedSizePerReady limits the size of the committed entries which
 	// can be applied.
@@ -252,32 +257,43 @@ func (c *Config) validate() error {
 }
 
 type raft struct {
+	// 当前节点在集群中的 ID
 	id uint64
 
+	// 当前任期号
 	Term uint64
+	// 当前任期中当前节点将选票投给了哪个节点，未投票时， 该字段为 None（0）
 	Vote uint64
 
+	// 只读任务的状态
 	readStates []ReadState
 
 	// the log
 	raftLog *raftLog
 
-	maxMsgSize         uint64
+	// 单条消息的最大字节数。
+	maxMsgSize uint64
+	// 最大未提交日志数量
 	maxUncommittedSize uint64
 	// TODO(tbg): rename to trk.
+	// progress 封装着其它节点信息
 	prs tracker.ProgressTracker
 
+	// 节点在集群中的身份
 	state StateType
 
 	// isLearner is true if the local raft node is a learner.
+	// Etcd 3.4 中引入的新角色，Learner 以无投票权的成员身份加入集群，直到赶上 Leader 的日志。
 	isLearner bool
 
+	// 缓存了当前节点等待发送的消息
 	msgs []pb.Message
 
 	// the leader id
 	lead uint64
 	// leadTransferee is id of the leader transfer target when its value is not zero.
 	// Follow the procedure defined in raft thesis 3.10.
+	// 用于集群中 Leader 节点的转移，记录了此次 Leader 角色转移的目标节点的 ID 。
 	leadTransferee uint64
 	// Only one conf change may be pending (in the log, but not yet
 	// applied) at a time. This is enforced via pendingConfIndex, which
@@ -289,6 +305,7 @@ type raft struct {
 	// an estimate of the size of the uncommitted tail of the Raft log. Used to
 	// prevent unbounded log growth. Only maintained by the leader. Reset on
 	// term changes.
+	// 未提交日志数量，防止日志无限增长
 	uncommittedSize uint64
 
 	readOnly *readOnly
@@ -297,33 +314,52 @@ type raft struct {
 	// or candidate.
 	// number of ticks since it reached last electionTimeout or received a
 	// valid message from current leader when it is a follower.
+	// 选举计时器，单位是逻辑时钟的刻度
 	electionElapsed int
 
 	// number of ticks since it reached last heartbeatTimeout.
 	// only leader keeps heartbeatElapsed.
+	// 心跳计时器
 	heartbeatElapsed int
 
+	// 每隔一段时间， Leader 节点会尝试连接集群中的其他节点（发送心跳消息），
+	// 如果发现自己可以连接到节点个数没有超过半数（即没有收到足够的心跳响应），则主动切换成 Follower 状态。
 	checkQuorum bool
-	preVote     bool
+	// 当 Follower 节点准备发起一次选举之前，会先连接集群中的其他节点，并询问它们是否愿意参与选举，
+	// 如果集群中的其他节点能够正常收到 Leader 节点的心跳消息，则会拒绝参与选举，反之则参与选举。
+	// 当在 PreVote 过程中，有超过半数的节点响应并参与新一轮选举，则可以发起新一轮的选举。
+	preVote bool
 
+	// 心跳超时时间， 当 heartbeatElapsed 字段值到达该值时，Leader 会向 Follower 发送一条心跳消息。
 	heartbeatTimeout int
-	electionTimeout  int
+	// 选举超时时间，当 electionElapsed 宇段值到达该值时，就会触发新一轮的选举。
+	electionTimeout int
 	// randomizedElectionTimeout is a random number between
 	// [electiontimeout, 2 * electiontimeout - 1]. It gets reset
 	// when raft changes its state to follower or candidate.
+	// TODO randomizedElectionTimeout 和 electionTimeout 有什么区别
+	// 随机选举超时时间，值为 [electiontimeout, 2 * electiontimeout - 1]，当 electionElapsed 超过该值时即为超时
 	randomizedElectionTimeout int
 	disableProposalForwarding bool
 
+	// 当前节点推进逻辑时钟的函数。如果当前节点是 Leader，则指向 raft.tickHeartbeat() 函数，
+	// 如果当前节点是 Follower 或是 Candidate ，则指向 raft.tickElection() 函数 。
 	tick func()
+	// 当前节点收到消息时的处理函数。
+	// 如果是 Leader 节点， 则该字段指向 stepLeader() 函数，
+	// 如果是 Follower 节点，则该字段指向 stepFollower() 函数，
+	// 如果是处于 preVote 或 Candidate 节点，则该字段指向 stepCandidate() 函数。
 	step stepFunc
 
 	logger Logger
 }
 
 func newRaft(c *Config) *raft {
+	// 检查 Config 参数合法性
 	if err := c.validate(); err != nil {
 		panic(err.Error())
 	}
+	// 创建 raftlog 实例
 	raftlog := newLogWithSize(c.Storage, c.Logger, c.MaxCommittedSizePerReady)
 	hs, cs, err := c.Storage.InitialState()
 	if err != nil {
@@ -373,6 +409,7 @@ func newRaft(c *Config) *raft {
 	if c.Applied > 0 {
 		raftlog.appliedTo(c.Applied)
 	}
+	// 节点初始状态均为 Follower
 	r.becomeFollower(r.Term, None)
 
 	var nodesStrs []string
@@ -433,6 +470,7 @@ func (r *raft) send(m pb.Message) {
 
 // sendAppend sends an append RPC with new entries (if any) and the
 // current commit index to the given peer.
+// 向指定节点发送 MsgApp 信息
 func (r *raft) sendAppend(to uint64) {
 	r.maybeSendAppend(to, true)
 }
@@ -444,6 +482,7 @@ func (r *raft) sendAppend(to uint64) {
 // are undesirable when we're sending multiple messages in a batch).
 func (r *raft) maybeSendAppend(to uint64, sendIfEmpty bool) bool {
 	pr := r.prs.Progress[to]
+	// 检查当前节点是否能够向对应的节点发送消息
 	if pr.IsPaused() {
 		return false
 	}
@@ -525,6 +564,7 @@ func (r *raft) sendHeartbeat(to uint64, ctx []byte) {
 
 // bcastAppend sends RPC, with entries to all peers that are not up-to-date
 // according to the progress recorded in r.prs.
+// 向其它节点发送 MsgApp 信息
 func (r *raft) bcastAppend() {
 	r.prs.Visit(func(id uint64, _ *tracker.Progress) {
 		if id == r.id {
@@ -553,6 +593,7 @@ func (r *raft) bcastHeartbeatWithCtx(ctx []byte) {
 	})
 }
 
+//
 func (r *raft) advance(rd Ready) {
 	// If entries were applied (or a snapshot), update our cursor for
 	// the next Ready. Note that if the current HardState contains a
@@ -601,6 +642,7 @@ func (r *raft) maybeCommit() bool {
 	return r.raftLog.maybeCommit(mci, r.Term)
 }
 
+// 重置实例状态信息
 func (r *raft) reset(term uint64) {
 	if r.Term != term {
 		r.Term = term
@@ -1078,6 +1120,7 @@ func stepLeader(r *raft, m pb.Message) error {
 		}
 		r.bcastAppend()
 		return nil
+	// 	处理 ReadIndex
 	case pb.MsgReadIndex:
 		// If more than the local vote is needed, go through a full broadcast,
 		// otherwise optimize.
@@ -1091,12 +1134,16 @@ func stepLeader(r *raft, m pb.Message) error {
 			// We can express this in terms of the term and index instead of a user-supplied value.
 			// This would allow multiple reads to piggyback on the same message.
 			switch r.readOnly.option {
+			// ReadOnlySafe 执行 readIndex 算法的逻辑
 			case ReadOnlySafe:
+				// 将请求添加到队列中
 				r.readOnly.addRequest(r.raftLog.committed, m)
 				// The local node automatically acks the request.
 				r.readOnly.recvAck(r.id, m.Entries[0].Data)
+				// leader 节点向其他节点发起广播
 				r.bcastHeartbeatWithCtx(m.Entries[0].Data)
 			case ReadOnlyLeaseBased:
+				// TODO(了解): ReadOnlyLeaseBased 是另一种线性一致性读算法
 				ri := r.raftLog.committed
 				if m.From == None || m.From == r.id { // from local member
 					r.readStates = append(r.readStates, ReadState{Index: ri, RequestCtx: m.Entries[0].Data})
@@ -1179,6 +1226,7 @@ func stepLeader(r *raft, m pb.Message) error {
 				}
 			}
 		}
+	// 心跳消息响应
 	case pb.MsgHeartbeatResp:
 		pr.RecentActive = true
 		pr.ProbeSent = false
@@ -1199,6 +1247,8 @@ func stepLeader(r *raft, m pb.Message) error {
 			return nil
 		}
 
+		// 清理 readOnly 的 map 和 queue 并将此时读状态添加到 readStates 队列中
+		// 上层会将 readStates 包装成 Ready 数据结构透给应用层
 		rss := r.readOnly.advance(m)
 		for _, rs := range rss {
 			req := rs.req
@@ -1361,10 +1411,12 @@ func stepFollower(r *raft, m pb.Message) error {
 			r.logger.Infof("%x received MsgTimeoutNow from %x but is not promotable", r.id, m.From)
 		}
 	case pb.MsgReadIndex:
+		// 如果没有 leader，出错处理
 		if r.lead == None {
 			r.logger.Infof("%x no leader at term %d; dropping index reading msg", r.id, r.Term)
 			return nil
 		}
+		// 将消息的目标地址修改为 leader，把读请求 forward 给 leader
 		m.To = r.lead
 		r.send(m)
 	case pb.MsgReadIndexResp:

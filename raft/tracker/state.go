@@ -23,13 +23,17 @@ const (
 	// its last index. In the ideal (and common) case, only one round of probing
 	// is necessary as the follower will react with a hint. Followers that are
 	// probed over extended periods of time are often offline.
+	// 表示 Leader 节点一次不能向目标节点发送多条消息，只能等待一条消息被响应之后，才能发送下一条消息。
+	// 当刚刚复制完快照数据、上次 MsgApp 消息被拒绝（或是发送失败）或是 Leader 节点初始化时，都会导致目标节点的 Progress 切换到该状态。
 	StateProbe StateType = iota
 	// StateReplicate is the state steady in which a follower eagerly receives
 	// log entries to append to its log.
+	// 正常的 Entry 记录复制状态，Leader 节点向目标节点发送完消息之后，无须等待响应，即可开始后续消息的发送。
 	StateReplicate
 	// StateSnapshot indicates a follower that needs log entries not available
 	// from the leader's Raft log. Such a follower needs a full snapshot to
 	// return to StateReplicate.
+	// 表示 Leader 节点正在向目标节点发送快照
 	StateSnapshot
 )
 

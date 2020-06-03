@@ -37,8 +37,11 @@ var _ = math.Inf
 const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 
 type Record struct {
-	Type             int64  `protobuf:"varint,1,opt,name=type" json:"type"`
-	Crc              uint32 `protobuf:"varint,2,opt,name=crc" json:"crc"`
+	// 该 Record 实例类型
+	Type int64 `protobuf:"varint,1,opt,name=type" json:"type"`
+	// 该 Record 实例的校验码
+	Crc uint32 `protobuf:"varint,2,opt,name=crc" json:"crc"`
+	// 日志数据
 	Data             []byte `protobuf:"bytes,3,opt,name=data" json:"data,omitempty"`
 	XXX_unrecognized []byte `json:"-"`
 }

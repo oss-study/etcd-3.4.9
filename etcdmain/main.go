@@ -23,7 +23,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// 启动服务
 func Main() {
+	// 检查是否支持该架构
 	checkSupportArch()
 
 	if len(os.Args) > 1 {
