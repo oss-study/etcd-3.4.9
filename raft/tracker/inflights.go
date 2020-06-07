@@ -21,15 +21,19 @@ package tracker
 // ack is received.
 type Inflights struct {
 	// the starting index in the buffer
+	// buffer 数组被当作一个 Sliding Window
 	start int
 	// number of inflights in the buffer
+	// MsgApp 消息的数量
 	count int
 
 	// the size of the buffer
+	// MsgApp 消息个数上限
 	size int
 
 	// buffer contains the index of the last entry
 	// inside one message.
+	// 每条 MsgApp 消息中最后一条 Entry 记录的索引值。
 	buffer []uint64
 }
 
@@ -52,6 +56,7 @@ func (in *Inflights) Clone() *Inflights {
 // dispatched. Full() must be called prior to Add() to verify that there is room
 // for one more message, and consecutive calls to add Add() must provide a
 // monotonic sequence of indexes.
+// 将发送的 MsgApp 消息记录到 Inflights 中
 func (in *Inflights) Add(inflight uint64) {
 	if in.Full() {
 		panic("cannot add into a Full inflights")
@@ -71,6 +76,7 @@ func (in *Inflights) Add(inflight uint64) {
 // grow the inflight buffer by doubling up to inflights.size. We grow on demand
 // instead of preallocating to inflights.size to handle systems which have
 // thousands of Raft groups per process.
+// 给 Inflights.buffer 扩容，但是不能超过 Inflights.size
 func (in *Inflights) grow() {
 	newSize := len(in.buffer) * 2
 	if newSize == 0 {

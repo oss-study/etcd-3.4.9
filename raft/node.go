@@ -344,7 +344,7 @@ func (n *node) run() {
 			// handled first, but it's generally good to emit larger Readys plus
 			// it simplifies testing (by emitting less frequently and more
 			// predictably).
-			// 不断地创建 Ready 数据结构透给上层应用
+			// 不断地创建 Ready 数据结构给上层应用
 			rd = n.rn.readyWithoutAccept()
 			readyc = n.readyc
 		}

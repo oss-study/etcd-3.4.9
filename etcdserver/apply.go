@@ -48,6 +48,7 @@ type applyResult struct {
 }
 
 // applierV3 is the interface for processing V3 raft messages
+// V3 版本的 API
 type applierV3 interface {
 	Apply(r *pb.InternalRaftRequest) *applyResult
 

@@ -130,6 +130,7 @@ func startEtcdOrProxyV2() {
 
 	which := identifyDataDirOrDie(cfg.ec.GetLogger(), cfg.ec.Dir)
 	if which != dirEmpty {
+		// 目录不为空且有效
 		if lg != nil {
 			lg.Info(
 				"server has been already initialized",
@@ -141,8 +142,10 @@ func startEtcdOrProxyV2() {
 		}
 		switch which {
 		case dirMember:
+			// 正常启动
 			stopped, errc, err = startEtcd(&cfg.ec)
 		case dirProxy:
+			// 代理启动
 			err = startProxy(cfg)
 		default:
 			if lg != nil {
@@ -552,6 +555,8 @@ func startProxy(cfg *config) error {
 
 // identifyDataDirOrDie returns the type of the data dir.
 // Dies if the datadir is invalid.
+// 检查 dir 的类型，有 dirMember、dirProxy 两种类型，并且这两种文件目录类型不能共存
+// 如果 dir 无效会返回 dirEmpty
 func identifyDataDirOrDie(lg *zap.Logger, dir string) dirType {
 	names, err := fileutil.ReadDir(dir)
 	if err != nil {
@@ -601,6 +606,7 @@ func identifyDataDirOrDie(lg *zap.Logger, dir string) dirType {
 	return dirEmpty
 }
 
+// 检查架构
 func checkSupportArch() {
 	// TODO qualify arm64
 	if runtime.GOARCH == "amd64" || runtime.GOARCH == "ppc64le" {

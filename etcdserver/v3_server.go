@@ -120,7 +120,7 @@ func (s *EtcdServer) Range(ctx context.Context, r *pb.RangeRequest) (*pb.RangeRe
 		return s.authStore.IsRangePermitted(ai, r.Key, r.RangeEnd)
 	}
 
-	// 执行到这里说明 applyIndex >= readIndex
+	// 执行到这里说明 applyIndex >= readIndex，可以读取数据
 	get := func() { resp, err = s.applyV3Base.Range(ctx, nil, r) }
 	if serr := s.doSerialize(ctx, chk, get); serr != nil {
 		err = serr
@@ -726,7 +726,7 @@ func (s *EtcdServer) linearizableReadLoop() {
 		// 请求完成说明当前读请求已经获取到对应准确的 readIndex
 		for !timeout && !done {
 			select {
-			// readIndex 请求完成
+			// readIndex() 请求完成
 			case rs = <-s.r.readStateC:
 				done = bytes.Equal(rs.RequestCtx, ctxToSend)
 				if !done {
@@ -769,7 +769,7 @@ func (s *EtcdServer) linearizableReadLoop() {
 			continue
 		}
 
-		// 此处就是等待 applyIndex >= readIndex
+		// 等待 AppliedIndex >= ReadIndex
 		if ai := s.getAppliedIndex(); ai < rs.Index {
 			select {
 			case <-s.applyWait.Wait(rs.Index):
@@ -778,13 +778,13 @@ func (s *EtcdServer) linearizableReadLoop() {
 			}
 		}
 		// unblock all l-reads requested at indices before rs.Index
-		// 发出可以进行读取状态机的信号
+		// 发送可以读取状态机的信号
 		nr.notify(nil)
 	}
 }
 
+// 等待『线性一致性读』通知
 func (s *EtcdServer) linearizableReadNotify(ctx context.Context) error {
-	// 当可以安全地执行读请求时，将从 readNotifier channel 得到信号
 	s.readMu.RLock()
 	nc := s.readNotifier
 	s.readMu.RUnlock()
@@ -798,7 +798,7 @@ func (s *EtcdServer) linearizableReadNotify(ctx context.Context) error {
 
 	// wait for read state notification
 	select {
-	// 等待 applyIndex >= readIndex
+	// 当可以安全地执行读请求时（AppliedIndex >= ReadIndex），将从 readNotifier channel 得到信号
 	case <-nc.c:
 		return nc.err
 	case <-ctx.Done():

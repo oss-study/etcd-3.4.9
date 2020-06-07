@@ -75,6 +75,7 @@ func (ro *readOnly) addRequest(index uint64, m pb.Message) {
 // recvAck notifies the readonly struct that the raft state machine received
 // an acknowledgment of the heartbeat that attached with the read only request
 // context.
+// 根据 readIndexReq 的 reqId 统计收到心跳回包的数量
 func (ro *readOnly) recvAck(id uint64, context []byte) map[uint64]bool {
 	rs, ok := ro.pendingReadIndex[string(context)]
 	if !ok {
@@ -88,6 +89,7 @@ func (ro *readOnly) recvAck(id uint64, context []byte) map[uint64]bool {
 // advance advances the read only request queue kept by the readonly struct.
 // It dequeues the requests until it finds the read only request that has
 // the same context as the given `m`.
+// 获取保存的 readIndexReq，添加到 readIndexStatus 中
 func (ro *readOnly) advance(m pb.Message) []*readIndexStatus {
 	var (
 		i     int
@@ -104,6 +106,7 @@ func (ro *readOnly) advance(m pb.Message) []*readIndexStatus {
 			panic("cannot find corresponding read state from pending map")
 		}
 		rss = append(rss, rs)
+		// 取出 reqId 相同的 ReadState 和其前面的所有 ReadState
 		if okctx == ctx {
 			found = true
 			break

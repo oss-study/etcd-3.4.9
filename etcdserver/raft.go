@@ -196,7 +196,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 				}
 
 				if len(rd.ReadStates) != 0 {
-					// 每次只将最后一个 readStateC 发送给 r.readStateC
+					// 每次只将最后一个 readState 发送到 r.readStateC 中，由 linearizableReadLoop() 监听
 					select {
 					case r.readStateC <- rd.ReadStates[len(rd.ReadStates)-1]:
 					case <-time.After(internalTimeout):

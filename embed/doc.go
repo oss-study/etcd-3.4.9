@@ -14,6 +14,7 @@
 
 /*
 Package embed provides bindings for embedding an etcd server in a program.
+// 在项目中嵌入使用 etcd
 
 Launch an embedded etcd server using the configuration defaults:
 

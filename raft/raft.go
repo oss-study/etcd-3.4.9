@@ -1125,6 +1125,7 @@ func stepLeader(r *raft, m pb.Message) error {
 		// If more than the local vote is needed, go through a full broadcast,
 		// otherwise optimize.
 		if !r.prs.IsSingleton() {
+			// 安全检查
 			if r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(r.raftLog.committed)) != r.Term {
 				// Reject read only request when this leader has not committed any log entry at its term.
 				return nil
@@ -1134,16 +1135,18 @@ func stepLeader(r *raft, m pb.Message) error {
 			// We can express this in terms of the term and index instead of a user-supplied value.
 			// This would allow multiple reads to piggyback on the same message.
 			switch r.readOnly.option {
-			// ReadOnlySafe 执行 readIndex 算法的逻辑
+			// ReadOnlySafe 执行 ReadIndex 算法的逻辑
 			case ReadOnlySafe:
 				// 将请求添加到队列中
 				r.readOnly.addRequest(r.raftLog.committed, m)
 				// The local node automatically acks the request.
 				r.readOnly.recvAck(r.id, m.Entries[0].Data)
-				// leader 节点向其他节点发起广播
+				// Leader 节点向其他节点发起广播
 				r.bcastHeartbeatWithCtx(m.Entries[0].Data)
 			case ReadOnlyLeaseBased:
 				// TODO(了解): ReadOnlyLeaseBased 是另一种线性一致性读算法
+				// Leader 取一个比 ElectionTimeout 小的租期，在租期不会发生选举，确保 Leader 不会变，所以可以跳过 ReadIndex 的第二步，也就降低了延时。
+				// LeaseRead 的正确性和时间挂钩，因此时间的实现至关重要，如果漂移严重，这套机制就会有问题。
 				ri := r.raftLog.committed
 				if m.From == None || m.From == r.id { // from local member
 					r.readStates = append(r.readStates, ReadState{Index: ri, RequestCtx: m.Entries[0].Data})
@@ -1411,12 +1414,12 @@ func stepFollower(r *raft, m pb.Message) error {
 			r.logger.Infof("%x received MsgTimeoutNow from %x but is not promotable", r.id, m.From)
 		}
 	case pb.MsgReadIndex:
-		// 如果没有 leader，出错处理
+		// 如果没有 Leader，出错处理
 		if r.lead == None {
 			r.logger.Infof("%x no leader at term %d; dropping index reading msg", r.id, r.Term)
 			return nil
 		}
-		// 将消息的目标地址修改为 leader，把读请求 forward 给 leader
+		// 将消息的目标地址修改为 Leader，把读请求转发给 Leader
 		m.To = r.lead
 		r.send(m)
 	case pb.MsgReadIndexResp:

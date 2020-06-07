@@ -36,10 +36,15 @@ import (
 )
 
 const (
+	// 该类型日志记录的 Data 字段中保存了一些元数据
 	metadataType int64 = iota + 1
+	// 该类型日志记录的 Data 字段中保存的是 Entry 记录
 	entryType
+	// 该类型日志记录的 Data 字段中保存了当前集群的状态信息（HardState）
 	stateType
+	// 该类型的日志记录主要用于数据校验
 	crcType
+	// 该类型的日志记录中保存了快照数据的相关信息（即 walpb.Snapshot）
 	snapshotType
 
 	// warnSyncDuration is the amount of time allotted to an fsync before
@@ -77,19 +82,27 @@ type WAL struct {
 	// dirFile is a fd for the wal directory for syncing on Rename
 	dirFile *os.File
 
-	metadata []byte           // metadata recorded at the head of each WAL
-	state    raftpb.HardState // hardstate recorded at the head of WAL
+	metadata []byte // metadata recorded at the head of each WAL
+	// WAL 日志记录是批量追加的，在每次批量写入 entry Type 类型的日志之后，都会再追加一条 stateType 类型的日志记录，
+	// 在 HardState 中记录了当前的 Term、当前节点的投票结果和己提交日志的位置。
+	state raftpb.HardState // hardstate recorded at the head of WAL
 
-	start     walpb.Snapshot // snapshot to start reading
-	decoder   *decoder       // decoder to decode records
-	readClose func() error   // closer for decode reader
+	start walpb.Snapshot // snapshot to start reading
+	// 读取 WAL 日志文件时，将二进制数据反序列化成 Record
+	decoder   *decoder     // decoder to decode records
+	readClose func() error // closer for decode reader
 
-	mu      sync.Mutex
+	// 读写 WAL 日志时需要加锁同步
+	mu sync.Mutex
+	// WAL 中最后一条 Entry 记录的索引值
 	enti    uint64   // index of the last entry saved to the wal
 	encoder *encoder // encoder to encode records
 
+	// 当前 WAL 实例管理的所有 WAL 日志文件句柄
 	locks []*fileutil.LockedFile // the locked files the WAL holds (the name is increasing)
-	fp    *filePipeline
+	// filePipeline 实例负责创建新的临时文件
+	// 当进行日志文件切换时会直接对临时文件进行重命名
+	fp *filePipeline
 }
 
 // Create creates a WAL ready for appending records. The given metadata is

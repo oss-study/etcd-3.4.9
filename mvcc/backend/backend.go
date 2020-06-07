@@ -61,6 +61,7 @@ type Backend interface {
 	// The backend can hold DB space that is not utilized at the moment,
 	// since it can conduct pre-allocation or spare unused space for recycling.
 	// Use SizeInUse() instead for the actual DB size.
+	// 返回已经存储的总字节数
 	Size() int64
 	// SizeInUse returns the current size of the backend logically in use.
 	// Since the backend can manage free space in a non-byte unit such as
@@ -68,7 +69,9 @@ type Backend interface {
 	SizeInUse() int64
 	// OpenReadTxN returns the number of currently open read transactions in the backend.
 	OpenReadTxN() int64
+	// 碎片整理
 	Defrag() error
+	// 提交批量读写事务
 	ForceCommit()
 	Close() error
 }
@@ -98,10 +101,14 @@ type backend struct {
 	mu sync.RWMutex
 	db *bolt.DB
 
+	// 两次批量读写事务提交的最大时间差
 	batchInterval time.Duration
-	batchLimit    int
-	batchTx       *batchTxBuffered
+	// 指定一次批量事务中最大的操作数，当超过该阔值时，当前的批量事务会自动提交
+	batchLimit int
+	// 批量读写事务， batchTxBuffered 是在 batchTx 的基础上添加了缓存功能
+	batchTx *batchTxBuffered
 
+	// 只读事务
 	readTx *readTx
 
 	stopc chan struct{}
