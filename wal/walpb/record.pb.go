@@ -52,7 +52,9 @@ func (*Record) ProtoMessage()               {}
 func (*Record) Descriptor() ([]byte, []int) { return fileDescriptorRecord, []int{0} }
 
 type Snapshot struct {
-	Index            uint64 `protobuf:"varint,1,opt,name=index" json:"index"`
+	// 对应快照数据所涵盖的最后一条 Entry 记录的索引值
+	Index uint64 `protobuf:"varint,1,opt,name=index" json:"index"`
+	// 记录了对应 Entry 记录的 Term 值
 	Term             uint64 `protobuf:"varint,2,opt,name=term" json:"term"`
 	XXX_unrecognized []byte `json:"-"`
 }

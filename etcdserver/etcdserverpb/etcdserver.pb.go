@@ -159,8 +159,11 @@ func (m *Request) String() string            { return proto.CompactTextString(m)
 func (*Request) ProtoMessage()               {}
 func (*Request) Descriptor() ([]byte, []int) { return fileDescriptorEtcdserver, []int{0} }
 
+// 元数据，保存在 WAL 文件的头部
 type Metadata struct {
-	NodeID           uint64 `protobuf:"varint,1,opt,name=NodeID" json:"NodeID"`
+	// 当前节点 ID
+	NodeID uint64 `protobuf:"varint,1,opt,name=NodeID" json:"NodeID"`
+	// TODO（beihai）: ClusterID 是什么
 	ClusterID        uint64 `protobuf:"varint,2,opt,name=ClusterID" json:"ClusterID"`
 	XXX_unrecognized []byte `json:"-"`
 }

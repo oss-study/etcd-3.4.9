@@ -47,8 +47,9 @@ type RaftCluster struct {
 	lg *zap.Logger
 
 	localID types.ID
-	cid     types.ID
-	token   string
+	// TODO（beihai）: cid(ClusterID) 是什么
+	cid   types.ID
+	token string
 
 	v2store v2store.Store
 	be      backend.Backend

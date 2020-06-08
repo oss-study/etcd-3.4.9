@@ -314,8 +314,11 @@ func (*Message) ProtoMessage()               {}
 func (*Message) Descriptor() ([]byte, []int) { return fileDescriptorRaft, []int{3} }
 
 type HardState struct {
-	Term             uint64 `protobuf:"varint,1,opt,name=term" json:"term"`
-	Vote             uint64 `protobuf:"varint,2,opt,name=vote" json:"vote"`
+	// 当前节点的任期
+	Term uint64 `protobuf:"varint,1,opt,name=term" json:"term"`
+	// 当前节点的投票结果
+	Vote uint64 `protobuf:"varint,2,opt,name=vote" json:"vote"`
+	// 己提交日志的索引
 	Commit           uint64 `protobuf:"varint,3,opt,name=commit" json:"commit"`
 	XXX_unrecognized []byte `json:"-"`
 }
