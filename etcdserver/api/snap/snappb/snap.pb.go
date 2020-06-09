@@ -36,7 +36,9 @@ var _ = math.Inf
 const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 
 type Snapshot struct {
-	Crc              uint32 `protobuf:"varint,1,opt,name=crc" json:"crc"`
+	// 校验码
+	Crc uint32 `protobuf:"varint,1,opt,name=crc" json:"crc"`
+	// 序列化后的 raftpb.Snapshot
 	Data             []byte `protobuf:"bytes,2,opt,name=data" json:"data,omitempty"`
 	XXX_unrecognized []byte `json:"-"`
 }

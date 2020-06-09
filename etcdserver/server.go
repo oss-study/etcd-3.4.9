@@ -72,6 +72,7 @@ const (
 	// We expect the follower has a millisecond level latency with the leader.
 	// The max throughput is around 10K. Keep a 5K entries is enough for helping
 	// follower to catch up.
+	// slow follower 追赶日志数量，V3 的极限写性能大概是 10K，在毫秒级的延迟下设定为 5K 是安全的
 	DefaultSnapshotCatchUpEntries uint64 = 5000
 
 	StoreClusterPrefix = "/0"
@@ -1108,6 +1109,7 @@ func (s *EtcdServer) run() {
 	}
 }
 
+// 应用日志与快照
 func (s *EtcdServer) applyAll(ep *etcdProgress, apply *apply) {
 	s.applySnapshot(ep, apply)
 	s.applyEntries(ep, apply)
@@ -1391,7 +1393,9 @@ func (s *EtcdServer) applyEntries(ep *etcdProgress, apply *apply) {
 	}
 }
 
+// 触发创建快照
 func (s *EtcdServer) triggerSnapshot(ep *etcdProgress) {
+	// 判断 appliedIndex 和 snapshotIndex 的大小差距是否达到设定的 SnapshotCount
 	if ep.appliedi-ep.snapi <= s.Cfg.SnapshotCount {
 		return
 	}
@@ -2352,6 +2356,7 @@ func (s *EtcdServer) snapshot(snapi uint64, confState raftpb.ConfState) {
 	// the go routine created below.
 	s.KV().Commit()
 
+	// 创建后台协程保存快照数据
 	s.goAttach(func() {
 		lg := s.getLogger()
 

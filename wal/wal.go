@@ -362,6 +362,7 @@ func OpenForRead(lg *zap.Logger, dirpath string, snap walpb.Snapshot) (*WAL, err
 	return openAtIndex(lg, dirpath, snap, false)
 }
 
+// 从指定的索引处读取 WAL 数据
 func openAtIndex(lg *zap.Logger, dirpath string, snap walpb.Snapshot, write bool) (*WAL, error) {
 	names, nameIndex, err := selectWALFiles(lg, dirpath, snap)
 	if err != nil {

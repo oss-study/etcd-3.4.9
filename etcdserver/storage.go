@@ -66,6 +66,7 @@ func (st *storage) SaveSnap(snap raftpb.Snapshot) error {
 	}
 	// gofail: var raftBeforeWALSaveSnaphot struct{}
 
+	// 创建快照后会在 WAL 中写入一条 Snapshot Record
 	return st.WAL.SaveSnapshot(walsnap)
 }
 

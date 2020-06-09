@@ -470,7 +470,7 @@ func (r *raft) send(m pb.Message) {
 
 // sendAppend sends an append RPC with new entries (if any) and the
 // current commit index to the given peer.
-// 向指定节点发送 MsgApp 信息
+// 发送快照 RPC
 func (r *raft) sendAppend(to uint64) {
 	r.maybeSendAppend(to, true)
 }
@@ -1120,7 +1120,7 @@ func stepLeader(r *raft, m pb.Message) error {
 		}
 		r.bcastAppend()
 		return nil
-	// 	处理 ReadIndex
+	//	处理 ReadIndex
 	case pb.MsgReadIndex:
 		// If more than the local vote is needed, go through a full broadcast,
 		// otherwise optimize.
@@ -1172,6 +1172,7 @@ func stepLeader(r *raft, m pb.Message) error {
 		return nil
 	}
 	switch m.Type {
+	// 快照 RPC 响应
 	case pb.MsgAppResp:
 		pr.RecentActive = true
 
