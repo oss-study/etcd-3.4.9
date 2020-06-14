@@ -47,9 +47,8 @@ type Storage interface {
 	// TODO(tbg): split this into two interfaces, LogStorage and StateStorage.
 
 	// InitialState returns the saved HardState and ConfState information.
-	// 返回 Storage 中记录的状态信息，返回的是 HardState 实例和 ConfState 实例
-	// HardState 保存着集群中每个节点都需要保存一些必需的基本信息，
-	// 其中主要封装了当前任期号（Term 字段）、当前节点在该任期中将选票投给了哪个节点（Vote 字段）、已提交 Entry 记录的位置（Commit字段）
+	// 返回 Storage 中记录的状态信息
+	// HardState 保存着当前节点基本信息
 	// ConfState 中封装了当前配置信息
 	InitialState() (pb.HardState, pb.ConfState, error)
 	// Entries returns a slice of log entries in the range [lo,hi).
@@ -61,7 +60,7 @@ type Storage interface {
 	// [FirstIndex()-1, LastIndex()]. The term of the entry before
 	// FirstIndex is retained for matching purposes even though the
 	// rest of that entry may not be available.
-	// 查询指定 Index 对应的 Entry 的 Term
+	// 查询指定 Index 对应 Entry 的 Term
 	Term(i uint64) (uint64, error)
 	// LastIndex returns the index of the last entry in the log.
 	// 返回 Storage 中记录的最后一条 Entry 的索引值
@@ -83,7 +82,7 @@ type Storage interface {
 
 // MemoryStorage implements the Storage interface backed by an
 // in-memory array.
-// MemoryStorage 在内存中维护状态信息、快照数据及所有的 entry 记录
+// MemoryStorage 在内存中维护状态信息、快照数据及 Entry 记录
 // 需要注意的是，MemoryStorage.ents[0] 是一条假数据
 type MemoryStorage struct {
 	// Protects access to all fields. Most methods of MemoryStorage are
@@ -211,6 +210,7 @@ func (ms *MemoryStorage) ApplySnapshot(snap pb.Snapshot) error {
 // If any configuration changes have been made since the last compaction,
 // the result of the last ApplyConfChange must be passed in.
 // 创建快照，然后调用 MemoryStorage.Compact() 方法抛弃前面的记录
+// i 是新建 Snapshot 包含的最大的索引值，data 是存储在快照中的数据
 func (ms *MemoryStorage) CreateSnapshot(i uint64, cs *pb.ConfState, data []byte) (pb.Snapshot, error) {
 	ms.Lock()
 	defer ms.Unlock()
@@ -259,6 +259,7 @@ func (ms *MemoryStorage) Compact(compactIndex uint64) error {
 // Append the new entries to storage.
 // TODO (xiangli): ensure the entries are continuous and
 // entries[0].Index > ms.entries[0].Index
+// 追加 entry 记录
 func (ms *MemoryStorage) Append(entries []pb.Entry) error {
 	if len(entries) == 0 {
 		return nil

@@ -28,6 +28,8 @@ import (
 // strewn around `*raft.raft`. Additionally, some fields are only used when in a
 // certain State. All of this isn't ideal.
 type Progress struct {
+	// Match 表示 Follower 节点己经成功复制的 Entry 记录的索引
+	// Next 表示 Follower 节点下一个待复制的 Entry 记录的索引值
 	Match, Next uint64
 	// State defines how the leader should interact with the follower.
 	//
@@ -40,6 +42,7 @@ type Progress struct {
 	//
 	// When in StateSnapshot, leader should have sent out snapshot
 	// before and stops sending any replication message.
+	// Follower 节点的复制状态，定义在 state.go 中
 	State StateType
 
 	// PendingSnapshot is used in StateSnapshot.
@@ -47,6 +50,7 @@ type Progress struct {
 	// index of the snapshot. If pendingSnapshot is set, the replication process of
 	// this Progress will be paused. raft will not resend snapshot until the pending one
 	// is reported to be failed.
+	// 当前正在发送的快照信息
 	PendingSnapshot uint64
 
 	// RecentActive is true if the progress is recently active. Receiving any messages
@@ -54,11 +58,13 @@ type Progress struct {
 	// RecentActive can be reset to false after an election timeout.
 	//
 	// TODO(tbg): the leader should always have this set to true.
+	// Progress 实例对应的 Follower 节点是否存活。
 	RecentActive bool
 
 	// ProbeSent is used while this follower is in StateProbe. When ProbeSent is
 	// true, raft should pause sending replication message to this peer until
 	// ProbeSent is reset. See ProbeAcked() and IsPaused().
+	// Leader 是否可以向该 Progress 实例对应的 Follower 发送消息
 	ProbeSent bool
 
 	// Inflights is a sliding window for the inflight messages.
@@ -142,6 +148,7 @@ func (pr *Progress) BecomeSnapshot(snapshoti uint64) {
 // MaybeUpdate is called when an MsgAppResp arrives from the follower, with the
 // index acked by it. The method returns false if the given n index comes from
 // an outdated message. Otherwise it updates the progress and returns true.
+// 尝试修改 Match 字段和 Next 字段，用来标识对应节点 Entry 记录复制的情况
 func (pr *Progress) MaybeUpdate(n uint64) bool {
 	var updated bool
 	if pr.Match < n {
@@ -208,6 +215,7 @@ func (pr *Progress) IsPaused() bool {
 	case StateProbe:
 		return pr.ProbeSent
 	case StateReplicate:
+		// 检查已发送未响应的消息个数
 		return pr.Inflights.Full()
 	case StateSnapshot:
 		return true

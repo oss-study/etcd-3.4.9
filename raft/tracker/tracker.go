@@ -121,6 +121,9 @@ type ProgressTracker struct {
 
 	Votes map[uint64]bool
 
+	// 己经发送出去但未收到响应的消息个数上限。
+	// 如果处于该状态的消息超过 MaxInflight，则暂停当前节点的消息发送，
+	// 这是为了防止集群中的某个节点不断发送消息，引起网络阻塞，影响其他节点的正常运行。
 	MaxInflight int
 }
 
@@ -264,6 +267,7 @@ func (p *ProgressTracker) RecordVote(id uint64, v bool) {
 
 // TallyVotes returns the number of granted and rejected Votes, and whether the
 // election outcome is known.
+// 统计投票结果
 func (p *ProgressTracker) TallyVotes() (granted int, rejected int, _ quorum.VoteResult) {
 	// Make sure to populate granted/rejected correctly even if the Votes slice
 	// contains members no longer part of the configuration. This doesn't really

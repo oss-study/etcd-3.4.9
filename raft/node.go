@@ -82,7 +82,7 @@ type Ready struct {
 	// CommittedEntries specifies entries to be committed to a
 	// store/state-machine. These have previously been committed to stable
 	// store.
-	// 己提交、待应用的 Entry 记录，这些记录己经保存到了 Storage 中
+	// 已提交、待应用的 Entry 记录，这些记录已经保存到了 Storage 中
 	CommittedEntries []pb.Entry
 
 	// Messages specifies outbound messages to be sent AFTER Entries are
@@ -112,6 +112,7 @@ func IsEmptySnap(sp pb.Snapshot) bool {
 	return sp.Metadata.Index == 0
 }
 
+// 检查是否需要交给上层模块处理
 func (rd Ready) containsUpdates() bool {
 	return rd.SoftState != nil || !IsEmptyHardState(rd.HardState) ||
 		!IsEmptySnap(rd.Snapshot) || len(rd.Entries) > 0 ||
@@ -180,7 +181,7 @@ type Node interface {
 	// commands. For example. when the last Ready contains a snapshot, the application might take
 	// a long time to apply the snapshot data. To continue receiving Ready without blocking raft
 	// progress, it can call Advance before finishing applying the last ready.
-	// 当上层模块处理完从上述 Channel 中返回的 Ready 实例之后 ， 需要调用 Advance() 通知 raft 模块返回新的 Ready 实例
+	// 当上层模块处理完从上述 Channel 中返回的 Ready 实例之后，需要调用 Advance() 通知 raft 模块返回新的 Ready 实例
 	Advance()
 	// ApplyConfChange applies a config change (previously passed to
 	// ProposeConfChange) to the node. This must be called whenever a config
@@ -350,12 +351,14 @@ func (n *node) run() {
 		}
 
 		if lead != r.lead {
+			// 检测当前的 Leader 节点是否发生变化
 			if r.hasLeader() {
 				if lead == None {
 					r.logger.Infof("raft.node: %x elected leader %x at term %d", r.id, r.lead, r.Term)
 				} else {
 					r.logger.Infof("raft.node: %x changed leader from %x to %x at term %d", r.id, lead, r.lead, r.Term)
 				}
+				// 如果当前节点无法确定集群中的 Leader ，则清空 propc，此次循环不再处理 MsgProp 消息
 				propc = n.propc
 			} else {
 				r.logger.Infof("raft.node: %x lost leader %x at term %d", r.id, lead, r.Term)
@@ -379,6 +382,7 @@ func (n *node) run() {
 		case m := <-n.recvc:
 			// 交由 step 函数处理
 			// filter out response message from unknown From.
+			// 如果是来自未知节点的响应消息则会被过滤
 			if pr := r.prs.Progress[m.From]; pr != nil || !IsResponseMsg(m.Type) {
 				r.Step(m)
 			}
@@ -584,18 +588,24 @@ func (n *node) ReadIndex(ctx context.Context, rctx []byte) error {
 	return n.step(ctx, pb.Message{Type: pb.MsgReadIndex, Entries: []pb.Entry{{Data: rctx}}})
 }
 
+// prevSoftSt、prevHardSt 是上次创建 Ready 实例时记录的 raft 实例的相关状态
 func newReady(r *raft, prevSoftSt *SoftState, prevHardSt pb.HardState) Ready {
 	rd := Ready{
-		Entries:          r.raftLog.unstableEntries(),
+		// 获取 unstable 的 Entry 记录，这些 Entry 记录会交给 WAL 进行持久化
+		Entries: r.raftLog.unstableEntries(),
+		// 获取己提交但未应用的 Entry 记录，
 		CommittedEntries: r.raftLog.nextEnts(),
-		Messages:         r.msgs,
+		// 获取待发送的消息
+		Messages: r.msgs,
 	}
+	// 检测两次创建 Ready 实例之间，raft 实例状态是否发生变化，
 	if softSt := r.softState(); !softSt.equal(prevSoftSt) {
 		rd.SoftState = softSt
 	}
 	if hardSt := r.hardState(); !isHardStateEqual(hardSt, prevHardSt) {
 		rd.HardState = hardSt
 	}
+	// 检测 unstable 中是否记录了新的快照数据，如果有，则将其封装到 Ready 实例中，交给上层模块进行处理
 	if r.raftLog.unstable.snapshot != nil {
 		rd.Snapshot = *r.raftLog.unstable.snapshot
 	}

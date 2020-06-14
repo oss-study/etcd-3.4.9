@@ -104,15 +104,19 @@ type raftNodeConfig struct {
 	lg *zap.Logger
 
 	// to check if msg receiver is removed from cluster
+	// 检测指定节点是否己经被移出集群
 	isIDRemoved func(id uint64) bool
 	raft.Node
 	raftStorage *raft.MemoryStorage
-	storage     Storage
-	heartbeat   time.Duration // for logging
+	// 区别于 MemoryStorage，这个是持久化存储
+	storage Storage
+	// 逻辑时钟刻度
+	heartbeat time.Duration // for logging
 	// transport specifies the transport to send and receive msgs to members.
 	// Sending messages MUST NOT block. It is okay to drop messages, since
 	// clients should timeout and reissue their messages.
 	// If transport is nil, server will panic.
+	// 通过网络将消息发送到集群中其他节点
 	transport rafthttp.Transporter
 }
 
@@ -171,7 +175,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 			case <-r.ticker.C:
 				r.tick()
 			case rd := <-r.Ready():
-				// 处理已完成 readIndex 的读请求
+				// 处理 Ready 结构体
 				if rd.SoftState != nil {
 					newLeader := rd.SoftState.Lead != raft.None && rh.getLead() != rd.SoftState.Lead
 					if newLeader {
@@ -196,7 +200,8 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 				}
 
 				if len(rd.ReadStates) != 0 {
-					// 每次只将最后一个 readState 发送到 r.readStateC 中，由 linearizableReadLoop() 监听
+					// 处理只读请求，每次只将最后一个 readState 发送到 r.readStateC 中，由 linearizableReadLoop() 监听
+					// TODO(beihai—待验证)：这里的逻辑可能是，Ready 中封装的最后一个只读请求已经满足 ReadIndex 要求了，那么前面的都可以满足
 					select {
 					case r.readStateC <- rd.ReadStates[len(rd.ReadStates)-1]:
 					case <-time.After(internalTimeout):
@@ -237,6 +242,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 				// ensure that recovery after a snapshot restore is possible.
 				if !raft.IsEmptySnap(rd.Snapshot) {
 					// gofail: var raftBeforeSaveSnap struct{}
+					// 持久化存储 rd.Snapshot
 					if err := r.storage.SaveSnap(rd.Snapshot); err != nil {
 						if r.lg != nil {
 							r.lg.Fatal("failed to save Raft snapshot", zap.Error(err))
@@ -248,6 +254,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 				}
 
 				// gofail: var raftBeforeSave struct{}
+				// 持久化存储 rd.HardState, rd.Entries
 				if err := r.storage.Save(rd.HardState, rd.Entries); err != nil {
 					if r.lg != nil {
 						r.lg.Fatal("failed to save Raft hard state and entries", zap.Error(err))
@@ -277,6 +284,8 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 					notifyc <- struct{}{}
 
 					// gofail: var raftBeforeApplySnap struct{}
+					// rd.Snapshot 被持久化后，再将数据从 unstable 移动到 MemoryStorage
+					// （实际上是先添加到 MemoryStorage，再通知 Raft 模块从 unstable 清除无用的 Snapshot
 					r.raftStorage.ApplySnapshot(rd.Snapshot)
 					if r.lg != nil {
 						r.lg.Info("applied incoming Raft snapshot", zap.Uint64("snapshot-index", rd.Snapshot.Metadata.Index))

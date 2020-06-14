@@ -28,7 +28,7 @@ const (
 	StateProbe StateType = iota
 	// StateReplicate is the state steady in which a follower eagerly receives
 	// log entries to append to its log.
-	// 正常的 Entry 记录复制状态，Leader 节点向目标节点发送完消息之后，无须等待响应，即可开始后续消息的发送。
+	// 正常的 Entry 记录复制状态，Leader 节点向目标节点发送消息后，无须等待响应，即可开始后续消息的发送。
 	StateReplicate
 	// StateSnapshot indicates a follower that needs log entries not available
 	// from the leader's Raft log. Such a follower needs a full snapshot to

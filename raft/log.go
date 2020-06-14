@@ -90,17 +90,23 @@ func (l *raftLog) String() string {
 // it returns (last index of new entries, true).
 func (l *raftLog) maybeAppend(index, logTerm, committed uint64, ents ...pb.Entry) (lastnewi uint64, ok bool) {
 	if l.matchTerm(index, logTerm) {
+		// 最新一条日志的索引
 		lastnewi = index + uint64(len(ents))
 		// 检查新增 Entry 与 原有 Entry 是否有冲突
 		ci := l.findConflict(ents)
 		switch {
 		case ci == 0:
+			// raftLog 中已经包含了所有待追加的 Entry 记录，不必进行任何追加操作
 		case ci <= l.committed:
+			// 如果出现冲突的位置是己提交的记录，则输出异常日志并终止整个程序
 			l.logger.Panicf("entry %d conflict with committed entry [committed(%d)]", ci, l.committed)
 		default:
+			// 如果冲突位置是未提交的部分
 			offset := index + 1
+			// 向 unstable 中追加日志
 			l.append(ents[ci-offset:]...)
 		}
+		// 更新 ra负Log. committed
 		l.commitTo(min(committed, lastnewi))
 		return lastnewi, true
 	}
@@ -130,6 +136,7 @@ func (l *raftLog) append(ents ...pb.Entry) uint64 {
 // The first entry MUST have an index equal to the argument 'from'.
 // The index of the given entries MUST be continuously increasing.
 func (l *raftLog) findConflict(ents []pb.Entry) uint64 {
+	// 遍历全部待追加的 Entry，判断 raftLog 中是否存在冲突的 Entry 记录
 	for _, ne := range ents {
 		if !l.matchTerm(ne.Index, ne.Term) {
 			if ne.Index <= l.lastIndex() {
@@ -168,6 +175,7 @@ func (l *raftLog) nextEnts() (ents []pb.Entry) {
 
 // hasNextEnts returns if there is any available entries for execution. This
 // is a fast check without heavy raftLog.slice() in raftLog.nextEnts().
+// 检查是否有待应用的记录
 func (l *raftLog) hasNextEnts() bool {
 	off := max(l.applied+1, l.firstIndex())
 	return l.committed+1 > off
@@ -237,6 +245,7 @@ func (l *raftLog) lastTerm() uint64 {
 func (l *raftLog) term(i uint64) (uint64, error) {
 	// the valid term range is [index of dummy entry, last index]
 	dummyIndex := l.firstIndex() - 1
+	// 尝试从 unstable 中获取对应的 Entry 记录并返回其 Term 值
 	if i < dummyIndex || i > l.lastIndex() {
 		// TODO: return an error instead?
 		return 0, nil
@@ -246,6 +255,7 @@ func (l *raftLog) term(i uint64) (uint64, error) {
 		return t, nil
 	}
 
+	// 尝试从 storage 中获取对应的 Entry 记录并返回其 Term 值
 	t, err := l.storage.Term(i)
 	if err == nil {
 		return t, nil
@@ -310,6 +320,7 @@ func (l *raftLog) restore(s pb.Snapshot) {
 }
 
 // slice returns a slice of log entries from lo through hi-1, inclusive.
+// 返回 [lo,hi) 范围的记录
 func (l *raftLog) slice(lo, hi, maxSize uint64) ([]pb.Entry, error) {
 	err := l.mustCheckOutOfBounds(lo, hi)
 	if err != nil {

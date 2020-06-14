@@ -92,7 +92,7 @@ func (u *unstable) stableTo(i, t uint64) {
 	if gt == t && i >= u.offset {
 		u.entries = u.entries[i+1-u.offset:]
 		u.offset = i + 1
-		// 随着多次追加日志和截断日志的操作， entires 数组会越来越大
+		// 对底层数组进行缩减
 		u.shrinkEntriesArray()
 	}
 }
@@ -112,6 +112,7 @@ func (u *unstable) shrinkEntriesArray() {
 		u.entries = nil
 	} else if len(u.entries)*lenMultiple < cap(u.entries) {
 		newEntries := make([]pb.Entry, len(u.entries))
+		// 复制原有切片中的数据
 		copy(newEntries, u.entries)
 		u.entries = newEntries
 	}
@@ -131,21 +132,25 @@ func (u *unstable) restore(s pb.Snapshot) {
 	u.snapshot = &s
 }
 
-// 向 unstable.entries 追加 Entry 记录
+// 追加 Entry 记录
 func (u *unstable) truncateAndAppend(ents []pb.Entry) {
+	// 获取第一条待追加的 Entry 记录的索引值
 	after := ents[0].Index
 	switch {
 	case after == u.offset+uint64(len(u.entries)):
+		// 如果待追加的记录与 entries 中的记录正好连续，则可以直接向 entries 中追加
 		// after is the next index in the u.entries
 		// directly append
 		u.entries = append(u.entries, ents...)
 	case after <= u.offset:
+		// 用待追加的 Entry 记录替换当前的 entries 字段 ， 并更新 offset
 		u.logger.Infof("replace the unstable entries from index %d", after)
 		// The log is being truncated to before our current offset
 		// portion, so set the offset and replace the entries
 		u.offset = after
 		u.entries = ents
 	default:
+		// after 在 offset～last 之间，将 offset~after 之间的记录保留，抛弃 after 之后的记录
 		// truncate to after and copy to u.entries
 		// then append
 		u.logger.Infof("truncate the unstable entries before index %d", after)

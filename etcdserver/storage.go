@@ -31,8 +31,11 @@ import (
 type Storage interface {
 	// Save function saves ents and state to the underlying stable storage.
 	// Save MUST block until st and ents are on stable storage.
+	// 实际调用了 WAL.Save
+	// 将 Entry 记录和 HardState 状态信息保存到 WAL 文件
 	Save(st raftpb.HardState, ents []raftpb.Entry) error
 	// SaveSnap function saves snapshot to the underlying stable storage.
+	// 将 Snapshot 保存到快照文件
 	SaveSnap(snap raftpb.Snapshot) error
 	// Close closes the Storage and performs finalization.
 	Close() error
@@ -42,6 +45,7 @@ type Storage interface {
 	Sync() error
 }
 
+// 内嵌了 WAL 和 Snap
 type storage struct {
 	*wal.WAL
 	*snap.Snapshotter

@@ -66,6 +66,7 @@ func getBasicStatus(r *raft) BasicStatus {
 }
 
 // getStatus gets a copy of the current raft status.
+// 获取集群状态
 func getStatus(r *raft) Status {
 	var s Status
 	s.BasicStatus = getBasicStatus(r)

@@ -270,10 +270,12 @@ func (*Entry) ProtoMessage()               {}
 func (*Entry) Descriptor() ([]byte, []int) { return fileDescriptorRaft, []int{0} }
 
 type SnapshotMetadata struct {
-	ConfState        ConfState `protobuf:"bytes,1,opt,name=conf_state,json=confState" json:"conf_state"`
-	Index            uint64    `protobuf:"varint,2,opt,name=index" json:"index"`
-	Term             uint64    `protobuf:"varint,3,opt,name=term" json:"term"`
-	XXX_unrecognized []byte    `json:"-"`
+	ConfState ConfState `protobuf:"bytes,1,opt,name=conf_state,json=confState" json:"conf_state"`
+	// 快照包含的最后一条日志的索引
+	Index uint64 `protobuf:"varint,2,opt,name=index" json:"index"`
+	// 	快照包含的最后一条日志的任期
+	Term             uint64 `protobuf:"varint,3,opt,name=term" json:"term"`
+	XXX_unrecognized []byte `json:"-"`
 }
 
 func (m *SnapshotMetadata) Reset()                    { *m = SnapshotMetadata{} }
@@ -282,7 +284,9 @@ func (*SnapshotMetadata) ProtoMessage()               {}
 func (*SnapshotMetadata) Descriptor() ([]byte, []int) { return fileDescriptorRaft, []int{1} }
 
 type Snapshot struct {
-	Data             []byte           `protobuf:"bytes,1,opt,name=data" json:"data,omitempty"`
+	// 需要写入的数据
+	Data []byte `protobuf:"bytes,1,opt,name=data" json:"data,omitempty"`
+
 	Metadata         SnapshotMetadata `protobuf:"bytes,2,opt,name=metadata" json:"metadata"`
 	XXX_unrecognized []byte           `json:"-"`
 }
@@ -292,20 +296,36 @@ func (m *Snapshot) String() string            { return proto.CompactTextString(m
 func (*Snapshot) ProtoMessage()               {}
 func (*Snapshot) Descriptor() ([]byte, []int) { return fileDescriptorRaft, []int{2} }
 
+// 所有消息的抽象
 type Message struct {
-	Type             MessageType `protobuf:"varint,1,opt,name=type,enum=raftpb.MessageType" json:"type"`
-	To               uint64      `protobuf:"varint,2,opt,name=to" json:"to"`
-	From             uint64      `protobuf:"varint,3,opt,name=from" json:"from"`
-	Term             uint64      `protobuf:"varint,4,opt,name=term" json:"term"`
-	LogTerm          uint64      `protobuf:"varint,5,opt,name=logTerm" json:"logTerm"`
-	Index            uint64      `protobuf:"varint,6,opt,name=index" json:"index"`
-	Entries          []Entry     `protobuf:"bytes,7,rep,name=entries" json:"entries"`
-	Commit           uint64      `protobuf:"varint,8,opt,name=commit" json:"commit"`
-	Snapshot         Snapshot    `protobuf:"bytes,9,opt,name=snapshot" json:"snapshot"`
-	Reject           bool        `protobuf:"varint,10,opt,name=reject" json:"reject"`
-	RejectHint       uint64      `protobuf:"varint,11,opt,name=rejectHint" json:"rejectHint"`
-	Context          []byte      `protobuf:"bytes,12,opt,name=context" json:"context,omitempty"`
-	XXX_unrecognized []byte      `json:"-"`
+	// 消息的类型，目前有 19 种，定义在上文中
+	Type MessageType `protobuf:"varint,1,opt,name=type,enum=raftpb.MessageType" json:"type"`
+	// 消息的目标节点 ID
+	To uint64 `protobuf:"varint,2,opt,name=to" json:"to"`
+	// 发送消息的节点 ID
+	From uint64 `protobuf:"varint,3,opt,name=from" json:"from"`
+	// 发送消息的节点的 Term
+	Term uint64 `protobuf:"varint,4,opt,name=term" json:"term"`
+	// 该消息携带的第一条 Entry 记录的 Term 值
+	LogTerm uint64 `protobuf:"varint,5,opt,name=logTerm" json:"logTerm"`
+	// 该消息携带的 Index 值，该索引值的具体含义与消息的类型相关：MsgApp 消息的 Index 字段保存了其携带的 Entry 记录中前一条记录的 Index 值
+	// MsgAppResp 消息的 Index 字段则是 Follower 节点提示 Leader 节点下次从哪个位置开始发送 Entry 记录
+	Index uint64 `protobuf:"varint,6,opt,name=index" json:"index"`
+	// 如果是 MsgApp 类型的消息，则该字段中保存了 Leader 节点复制到 Follower 节点的 Entrγ 记录
+	Entries []Entry `protobuf:"bytes,7,rep,name=entries" json:"entries"`
+	// 消息发送节点的提交位置（committedIndex）
+	Commit uint64 `protobuf:"varint,8,opt,name=commit" json:"commit"`
+	// 在传输快照时，该字段保存了快照数据
+	Snapshot Snapshot `protobuf:"bytes,9,opt,name=snapshot" json:"snapshot"`
+	// 主要用于响应类型的消息，表示是否拒绝收到的消息。例如，Follower 收到 Leader 发来的 MsgApp 消息，
+	// 如果 Follower 节点发现 MsgApp 消息携带的 Entry 记录并不能直接追加到本地的 raftLog 中，则会将响应消息的 Reject 字段设为 true，
+	// 并且会在 RejectHint 字段中记录合适的 Entry 索引值。
+	Reject bool `protobuf:"varint,10,opt,name=reject" json:"reject"`
+	// Follower 拒绝 Leader 的消息后，会在该字段记录一个 Entry 索引值供 Leader 节点。
+	RejectHint uint64 `protobuf:"varint,11,opt,name=rejectHint" json:"rejectHint"`
+	// 消息携带的一些上下文信息。例如，该消息是否与 Leader 节点转移相关。
+	Context          []byte `protobuf:"bytes,12,opt,name=context" json:"context,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
 }
 
 func (m *Message) Reset()                    { *m = Message{} }
