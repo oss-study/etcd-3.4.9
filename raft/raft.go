@@ -294,7 +294,7 @@ type raft struct {
 	lead uint64
 	// leadTransferee is id of the leader transfer target when its value is not zero.
 	// Follow the procedure defined in raft thesis 3.10.
-	// 用于集群中 Leader 节点的转移，记录了此次 Leader 角色转移的目标节点的 ID 。
+	// 用于集群中 Leader 节点的转移，记录了此次 Leader 角色转移的目标节点的 ID。
 	leadTransferee uint64
 	// Only one conf change may be pending (in the log, but not yet
 	// applied) at a time. This is enforced via pendingConfIndex, which
@@ -324,7 +324,7 @@ type raft struct {
 	// 心跳计时器
 	heartbeatElapsed int
 
-	// 每隔一段时间， Leader 节点会尝试连接集群中的其他节点（发送心跳消息），
+	// 每隔一段时间，Leader 节点会尝试连接集群中的其他节点（发送心跳消息），
 	// 如果发现自己可以连接到节点个数没有超过半数（即没有收到足够的心跳响应），则主动切换成 Follower 状态。
 	checkQuorum bool
 	// 在 Follower 准备发起一次选举之前，会先连接集群中的其他节点，并询问它们是否愿意参与选举，
@@ -334,12 +334,11 @@ type raft struct {
 
 	// 心跳超时时间，当 heartbeatElapsed 字段值到达该值时，Leader 会向 Follower 发送一条心跳消息
 	heartbeatTimeout int
-	// 选举超时时间，当 electionElapsed 字段值到达该值时，会触发 checkQuorum
+	// 选举超时时间，当 electionElapsed 字段值到达该值时，会触发 checkQuorum（用于 Leader 检查自身身份的有效性）
 	electionTimeout int
 	// randomizedElectionTimeout is a random number between
 	// [electiontimeout, 2 * electiontimeout - 1]. It gets reset
 	// when raft changes its state to follower or candidate.
-	// TODO randomizedElectionTimeout 和 electionTimeout 有什么区别
 	// 随机选举超时时间，值为 [electionTimeout, 2 * electionTimeout - 1]，当 electionElapsed 超过该值时即发起选举
 	// 当节点身份发生变化时这个值会重置
 	randomizedElectionTimeout int
@@ -348,7 +347,7 @@ type raft struct {
 
 	// 当前节点推进逻辑时钟的函数。
 	// 如果当前节点是 Leader，则指向 raft.tickHeartbeat() 函数，
-	// 如果当前节点是 Follower 或是 Candidate ，则指向 raft.tickElection() 函数 。
+	// 如果当前节点是 Follower 或是 Candidate，则指向 raft.tickElection() 函数 。
 	tick func()
 	// 当前节点收到消息时的处理函数。
 	// 如果是 Leader 节点， 则该字段指向 stepLeader() 函数，
@@ -715,10 +714,11 @@ func (r *raft) appendEntry(es ...pb.Entry) (accepted bool) {
 }
 
 // tickElection is run by followers and candidates after r.electionTimeout.
-// 选举计时器推荐函数
+// 选举计时器推进函数
 func (r *raft) tickElection() {
 	r.electionElapsed++
 
+	// 超时，发送选举消息
 	if r.promotable() && r.pastElectionTimeout() {
 		r.electionElapsed = 0
 		r.Step(pb.Message{From: r.id, Type: pb.MsgHup})
@@ -1731,6 +1731,7 @@ func (r *raft) loadState(state pb.HardState) {
 // pastElectionTimeout returns true iff r.electionElapsed is greater
 // than or equal to the randomized election timeout in
 // [electiontimeout, 2 * electiontimeout - 1].
+// Follower 的选举计时器超时
 func (r *raft) pastElectionTimeout() bool {
 	return r.electionElapsed >= r.randomizedElectionTimeout
 }
