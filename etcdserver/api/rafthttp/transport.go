@@ -46,32 +46,38 @@ type Raft interface {
 type Transporter interface {
 	// Start starts the given Transporter.
 	// Start MUST be called before calling other functions in the interface.
+	// 初始化操作
 	Start() error
 	// Handler returns the HTTP handler of the transporter.
 	// A transporter HTTP handler handles the HTTP requests
 	// from remote peers.
 	// The handler MUST be used to handle RaftPrefix(/raft)
 	// endpoint.
+	// 创建 Handler 实例，并关联到指定的 URL 上
 	Handler() http.Handler
 	// Send sends out the given messages to the remote peers.
 	// Each message has a To field, which is an id that maps
 	// to an existing peer in the transport.
 	// If the id cannot be found in the transport, the message
 	// will be ignored.
+	// 发送消息
 	Send(m []raftpb.Message)
 	// SendSnapshot sends out the given snapshot message to a remote peer.
 	// The behavior of SendSnapshot is similar to Send.
+	// 发送 RPC 快照
 	SendSnapshot(m snap.Message)
 	// AddRemote adds a remote with given peer urls into the transport.
 	// A remote helps newly joined member to catch up the progress of cluster,
 	// and will not be used after that.
 	// It is the caller's responsibility to ensure the urls are all valid,
 	// or it panics.
+	// 在集群中添加一个节点时，其他节点会通过该方法添加该新加入节点的信息
 	AddRemote(id types.ID, urls []string)
 	// AddPeer adds a peer with given peer urls into the transport.
 	// It is the caller's responsibility to ensure the urls are all valid,
 	// or it panics.
 	// Peer urls are used to connect to the remote peer.
+	// Peer 接口是当前节点对集群中其他节点的抽象表示，而结构体 peer 则是 Peer 接口的一个具体实现
 	AddPeer(id types.ID, urls []string)
 	// RemovePeer removes the peer with given id.
 	RemovePeer(id types.ID)
@@ -89,6 +95,7 @@ type Transporter interface {
 	// ActivePeers returns the number of active peers.
 	ActivePeers() int
 	// Stop closes the connections and stops the transporter.
+	// 关闭网络连接
 	Stop()
 }
 
@@ -126,10 +133,13 @@ type Transport struct {
 	streamRt   http.RoundTripper // roundTripper used by streams
 	pipelineRt http.RoundTripper // roundTripper used by pipelines
 
-	mu      sync.RWMutex         // protect the remote and peer map
+	mu sync.RWMutex // protect the remote and peer map
+	// remote 中只封装了 pipeline 实例，主要负责发送快照数据，帮助新加入的节点快速追赶上其它节点
 	remotes map[types.ID]*remote // remotes map that helps newly joined member to catch up
-	peers   map[types.ID]Peer    // peers map
+	// peers 维护了节点 ID 到对应 Peer 实例之间的映射关系 。
+	peers map[types.ID]Peer // peers map
 
+	// 探测消息通道是否可用
 	pipelineProber probing.Prober
 	streamProber   probing.Prober
 }
