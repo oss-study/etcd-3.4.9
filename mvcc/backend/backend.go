@@ -50,11 +50,14 @@ var (
 
 type Backend interface {
 	// ReadTx returns a read transaction. It is replaced by ConcurrentReadTx in the main data path, see #10523.
+	// 只读事务
 	ReadTx() ReadTx
+	// 读写事务（批量事务）
 	BatchTx() BatchTx
 	// ConcurrentReadTx returns a non-blocking read transaction.
 	ConcurrentReadTx() ReadTx
 
+	// 创建快照
 	Snapshot() Snapshot
 	Hash(ignores map[IgnoreKey]struct{}) (uint32, error)
 	// Size returns the current size of the backend physically allocated.
@@ -68,6 +71,7 @@ type Backend interface {
 	// number of pages, the returned value can be not exactly accurate in bytes.
 	SizeInUse() int64
 	// OpenReadTxN returns the number of currently open read transactions in the backend.
+	// 返回当前正在进行的只读事务数量
 	OpenReadTxN() int64
 	// 碎片整理
 	Defrag() error
@@ -90,6 +94,7 @@ type backend struct {
 	// 64-bit aligned, otherwise 32-bit tests will crash
 
 	// size is the number of bytes allocated in the backend
+	// 当前 backend 实例已存储的总字节数
 	size int64
 	// sizeInUse is the number of bytes actually used in the backend
 	sizeInUse int64
@@ -101,11 +106,11 @@ type backend struct {
 	mu sync.RWMutex
 	db *bolt.DB
 
-	// 两次批量读写事务提交的最大时间差
+	// 两次批量事务提交的最大时间差
 	batchInterval time.Duration
-	// 指定一次批量事务中最大的操作数，当超过该阔值时，当前的批量事务会自动提交
+	// 指定一次批量事务中最大的操作数，当超过该阈值时，当前的批量事务会自动提交
 	batchLimit int
-	// 批量读写事务， batchTxBuffered 是在 batchTx 的基础上添加了缓存功能
+	// 批量事务， batchTxBuffered 是在 batchTx 的基础上添加了缓存功能
 	batchTx *batchTxBuffered
 
 	// 只读事务
@@ -121,12 +126,16 @@ type BackendConfig struct {
 	// Path is the file path to the backend file.
 	Path string
 	// BatchInterval is the maximum time before flushing the BatchTx.
+	// 提交两次批量事务的最大时间差，默认 100ms
 	BatchInterval time.Duration
 	// BatchLimit is the maximum puts before flushing the BatchTx.
+	// 指定每个批量读写事务能包含的最多操作个数，当超过这个阈值后，当前批量读写事务会自动提交
+	// 默认值 10,000
 	BatchLimit int
 	// BackendFreelistType is the backend boltdb's freelist type.
 	BackendFreelistType bolt.FreelistType
 	// MmapSize is the number of bytes to mmap for the backend.
+	// 设置 mmap 使用的最大内存大小，默认 10GB
 	MmapSize uint64
 	// Logger logs backend-side operations.
 	Logger *zap.Logger
@@ -189,6 +198,7 @@ func newBackend(bcfg BackendConfig) *backend {
 		lg: bcfg.Logger,
 	}
 	b.batchTx = newBatchTxBuffered(b)
+	// 启动一个单独的协程，其中会定时提交当前的读写事务，并开启新的读写事务
 	go b.run()
 	return b
 }
@@ -324,6 +334,7 @@ func (b *backend) SizeInUse() int64 {
 
 func (b *backend) run() {
 	defer close(b.donec)
+	// 定时器
 	t := time.NewTimer(b.batchInterval)
 	defer t.Stop()
 	for {
@@ -334,6 +345,7 @@ func (b *backend) run() {
 			return
 		}
 		if b.batchTx.safePending() != 0 {
+			// 提交当前的读写事务，并开启一个新的读写事务
 			b.batchTx.Commit()
 		}
 		t.Reset(b.batchInterval)

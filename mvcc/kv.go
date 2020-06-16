@@ -33,6 +33,7 @@ type RangeResult struct {
 	Count int
 }
 
+// 只读视图
 type ReadView interface {
 	// FirstRev returns the first KV revision at the time of opening the txn.
 	// After a compaction, the first revision increases to the compaction
@@ -61,6 +62,7 @@ type TxnRead interface {
 	End()
 }
 
+// 读写事务
 type WriteView interface {
 	// DeleteRange deletes the given range from the store.
 	// A deleteRange increases the rev of the store if any key in the range exists.
@@ -76,6 +78,7 @@ type WriteView interface {
 	// id.
 	// A put also increases the rev of the store, and generates one event in the event history.
 	// The returned rev is the current revision of the KV when the operation is executed.
+	// 添加指定的键值对
 	Put(key, value []byte, lease lease.LeaseID) (rev int64)
 }
 

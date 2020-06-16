@@ -27,13 +27,20 @@ import (
 
 type BatchTx interface {
 	ReadTx
+	// 创建 Bucket
 	UnsafeCreateBucket(name []byte)
+	// 向指定 Bucket 添加键值对
 	UnsafePut(bucketName []byte, key []byte, value []byte)
+	// 与 UnsafePut() 方法的区别是，向指定 Bucket 中添加键值对时会将对应 Bucket 实例的填充比例设置为 90%
+	// 这样可以在顺序写入时，提高 Bucket 的利用率
 	UnsafeSeqPut(bucketName []byte, key []byte, value []byte)
+	// 在指定 Bucket 中删除指定的键位对
 	UnsafeDelete(bucketName []byte, key []byte)
 	// Commit commits a previous tx and begins a new writable one.
+	// 提交当前的读写事务，并立即打开一个新的读写事务
 	Commit()
 	// CommitAndStop commits the previous tx and does not create a new one.
+	// 提交当前的读写事务，但是不会打开新的读写事务
 	CommitAndStop()
 }
 
@@ -42,6 +49,7 @@ type batchTx struct {
 	tx      *bolt.Tx
 	backend *backend
 
+	// 当前事务中执行的修改操作个数，在当前读写事务提交时，该值会被重置为 0
 	pending int
 }
 
@@ -141,6 +149,7 @@ func (t *batchTx) UnsafeRange(bucketName, key, endKey []byte, limit int64) ([][]
 	return unsafeRange(bucket.Cursor(), key, endKey, limit)
 }
 
+// 从 BoltDB 中查询
 func unsafeRange(c *bolt.Cursor, key, endKey []byte, limit int64) (keys [][]byte, vs [][]byte) {
 	if limit <= 0 {
 		limit = math.MaxInt64

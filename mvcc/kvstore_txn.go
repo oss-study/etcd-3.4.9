@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// 读事务
 type storeTxnRead struct {
 	s  *store
 	tx backend.ReadTx
@@ -56,6 +57,7 @@ func (tr *storeTxnRead) End() {
 	tr.s.mu.RUnlock()
 }
 
+// 写事务
 type storeTxnWrite struct {
 	storeTxnRead
 	tx backend.BatchTx

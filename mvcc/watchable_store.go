@@ -52,14 +52,20 @@ type watchableStore struct {
 	mu sync.RWMutex
 
 	// victims are watcher batches that were blocked on the watch channel
+	// 如果 watcher 实例关联的 ch 通道被阻塞了， 则对应的 watcherBatch 实例会暂时记录到该字段中。
 	victims []watcherBatch
+	// 当有新的 watcherBatch 实例添加到 victims 字段中时，会向该通道中发送一个空结构体作为信号。
 	victimc chan struct{}
 
+	// 当 etcd 服务端收到客户端的 watch 请求时，如果请求携带了 revision 参数，则将其和 store.currentRev 信息比较，
+	// 如果请求中的 revision 信息较大，则放入 synced 中，否则放入 unsynced。
 	// contains all unsynced watchers that needs to sync with events that have happened
+	// unsynced 中的 watcher 实例都落后于当前最新更新操作，并且有一个单独的后台 goroutine 帮助其进行追赶。
 	unsynced watcherGroup
 
 	// contains all synced watchers that are in sync with the progress of the store.
 	// The key of the map is the key that the watcher watches on.
+	// synced 中的全部 watcher 实例都已经同步完毕，并等待新的更新操作
 	synced watcherGroup
 
 	stopc chan struct{}

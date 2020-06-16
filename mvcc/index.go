@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// 对谷歌开源的 BTree 进行的封装
 type index interface {
 	Get(key []byte, atRev int64) (rev, created revision, ver int64, err error)
 	Range(key, end []byte, atRev int64) ([][]byte, []revision)
@@ -44,6 +45,7 @@ type treeIndex struct {
 }
 
 func newTreeIndex(lg *zap.Logger) index {
+	// 这里将 BTree 的度初始化为 32，即除了根节点的每个节点至少有 32 个元素，最多有 64 个元素
 	return &treeIndex{
 		tree: btree.New(32),
 		lg:   lg,
