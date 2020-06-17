@@ -72,7 +72,7 @@ type keyIndex struct {
 	key []byte
 	// 该 Key 值最后一次修改对应的 revision 信息
 	modified revision // the main rev of the last modification
-	// 当第一次创建客户端给定的 Key 值时，对应的第 O 代版本信息（即 generations[0]）项也会被创建
+	// 当第一次创建客户端给定的 Key 值时，对应的第 0 代版本信息（即 generations[0]）项也会被创建
 	// 所以每个 Key 至少对应一个 generation 实例（如果没有，则表示当前 Key 应该被删除）
 	// 每代中包含多个 revision 信息，当客户端不断修改该 Key 时，generation[0] 中会不断追加 revision 信息
 	// 当对 generation[0] 添加墓碑之后，将会从 generation[1] 添加 revision
@@ -132,7 +132,7 @@ func (ki *keyIndex) restore(lg *zap.Logger, created, modified revision, ver int6
 // tombstone puts a revision, pointing to a tombstone, to the keyIndex.
 // It also creates a new empty generation in the keyIndex.
 // It returns ErrRevisionNotFound when tombstone on an empty generation.
-// 在当前 generation 中追加一个 revision 实例， 然后新建一个 generation 实例
+// 在当前 generation 中追加一个 revision 实例，然后新建一个 generation 实例
 func (ki *keyIndex) tombstone(lg *zap.Logger, main int64, sub int64) error {
 	if ki.isEmpty() {
 		if lg != nil {
@@ -197,6 +197,7 @@ func (ki *keyIndex) since(lg *zap.Logger, rev int64) []revision {
 	since := revision{rev, 0}
 	var gi int
 	// find the generations to start checking
+	// 倒序遍历所有 generation 实例，确定从哪个 generation 开始查找
 	for gi = len(ki.generations) - 1; gi > 0; gi-- {
 		g := ki.generations[gi]
 		if g.isEmpty() {
@@ -314,7 +315,7 @@ func (ki *keyIndex) isEmpty() bool {
 // which means that the key does not exist at the given rev, it returns nil.
 func (ki *keyIndex) findGeneration(rev int64) *generation {
 	lastg := len(ki.generations) - 1
-	// 指向当前 keyIndex 实例中最后一个 generation 实例，并逐个向前查找
+	// 指向当前 keyIndex 实例中最后一个 generation 实例，并倒序查找
 	cg := lastg
 
 	for cg >= 0 {
@@ -325,11 +326,12 @@ func (ki *keyIndex) findGeneration(rev int64) *generation {
 		}
 		g := ki.generations[cg]
 		if cg != lastg {
-			// 如果不是最后一个 generation 实例，则先与 tombone revision 进行比较
+			// 如果不是最后一个 generation 实例，则先与 tombstone revision 进行比较
 			if tomb := g.revs[len(g.revs)-1].main; tomb <= rev {
 				return nil
 			}
 		}
+		// 与 generation 中的第一个 revision 比较
 		if g.revs[0].main <= rev {
 			return &ki.generations[cg]
 		}

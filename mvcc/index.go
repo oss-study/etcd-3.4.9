@@ -39,6 +39,7 @@ type index interface {
 }
 
 type treeIndex struct {
+	// 读写锁
 	sync.RWMutex
 	tree *btree.BTree
 	lg   *zap.Logger

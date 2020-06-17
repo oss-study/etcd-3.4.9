@@ -108,7 +108,7 @@ type backend struct {
 
 	// 两次批量事务提交的最大时间差
 	batchInterval time.Duration
-	// 指定一次批量事务中最大的操作数，当超过该阈值时，当前的批量事务会自动提交
+	// 指定了一次读写事务中最大的操作数，当超过该阈值时，当前的读写事务会自动提交
 	batchLimit int
 	// 批量事务， batchTxBuffered 是在 batchTx 的基础上添加了缓存功能
 	batchTx *batchTxBuffered
